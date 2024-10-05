@@ -19,6 +19,8 @@ class MultiDimAverageMeter(object):
         self.idx_helper = torch.arange(np.prod(dims), dtype=torch.long).reshape(*dims)
 
     def add(self, vals, idxs):
+        #print(f'idxs shape: {idxs.shape}')
+        #print(f'idxs:\n{idxs}')
         flattened_idx = torch.stack(
             [self.idx_helper[tuple(idxs[i])] for i in range(idxs.size(0))],
             dim=0,
