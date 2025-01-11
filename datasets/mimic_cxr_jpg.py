@@ -94,7 +94,7 @@ class MimicCXR:
             for idx in tqdm(range(len(self.data_frame)), desc="Processing Images"):
                 labels = self.data_frame.iloc[idx, self.class_indices].values.astype(np.float32)
                 self.labels.append(labels)
-                #if idx < 75000:
+                #if idx < 90000:
                 #   continue
                 img_path = os.path.join(self.root, self.data_frame.iloc[idx]['path'])
                 image = Image.open(img_path).convert('RGB')

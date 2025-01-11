@@ -40,16 +40,17 @@ def clip_gradient(optimizer, grad_clip):
 
 def parse_option():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exp_name", type=str, default="salt_and_pepperdense")
+    parser.add_argument("--exp_name", type=str, default="flacdensenet")
     parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--task", type=str, default="salt_and_pepper")
-    parser.add_argument("--epochs", type=int, default=55)
+    parser.add_argument("--task", type=str, default="logo")
+    parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--seed", type=int, default=42)
 
     parser.add_argument("--bs", type=int, default=64, help="batch_size")
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--alpha", type=float, default=100)
-    parser.add_argument("--csv_file", type=str, default='/home/csi22304/mimic_debiasing/data/half_meta_data_filtered.csv')
+    parser.add_argument("--lr", type=float, default=0.5e-3)
+    parser.add_argument("--beta", type=float, default=1)
+    parser.add_argument("--alpha", type=float, default=1)
+    parser.add_argument("--csv_file", type=str, default='data/half_meta_data_filtered.csv')
     parser.add_argument("--root_dir", type=str, default='/home/csi22304/physionet/physionet.org/files/mimic-cxr-jpg/2.0.0/')
     parser.add_argument("--grad_clip", type=float, default=0.5)
     parser.add_argument("--val_split", type=float, default=0.2)
@@ -68,7 +69,7 @@ def parse_option():
 def set_model(opt, num_classes=2):
     model = DenseNet121(num_classes=num_classes).cuda()
     print(model)
-    if True:
+    if False:
         for param in model.parameters():
             param.requires_grad = False
         for param in model.extractor[6:].parameters():
@@ -76,7 +77,8 @@ def set_model(opt, num_classes=2):
         for param in model.fc.parameters():
             param.requires_grad = True
     # criterion1 = nn.CrossEntropyLoss()
-    criterion1 = nn.BCELoss().cuda()
+    #criterion1 = nn.BCELoss().cuda()
+    criterion1 = nn.BCEWithLogitsLoss().cuda()
     protected_net = ResNet18(num_classes=1)
     if opt.task == "race":
         protected_attr_model = "./bias_capturing_classifiers/bcc_race.pth"
@@ -90,6 +92,8 @@ def set_model(opt, num_classes=2):
         protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands18.pth"
     elif opt.task == "salt_and_pepper":
         protected_attr_model = "./bias_capturing_classifiers/bcc_salt_and_pepper18.pth"
+    elif opt.task == "gaussian_noise":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_gaussian_noise18.pth"
     protected_net = torch.load(protected_attr_model)
     protected_net.cuda()
     return model, criterion1, protected_net
@@ -122,7 +126,7 @@ def train(train_loader, model, criterion, optimizer, protected_net, opt):
             # print(f'features shape: {features.shape}')
             # print(f'labels shape: {labels.shape}')
             loss_mi_div = opt.alpha * (flac_loss(pr_feat, features, labels_max))
-            loss_cl = 0.01 * criterion(logits, labels)
+            loss_cl = opt.beta * criterion(logits, labels)
             loss = loss_cl + loss_mi_div
 
             avg_loss.update(loss.item(), bsz)
@@ -158,21 +162,25 @@ def validate(val_loader, model, criterion):
             loss = criterion(output, labels)
             total_val_loss += loss * bsz
             # preds = output.data.max(1, keepdim=True)[1].squeeze(1)
-            preds = (output > 0.5).long()
-
+            #preds = (output > 0.5).long()
+            preds = output.argmax(1)
 
             #print(f'Output shape: {output.shape}, Labels shape: {labels.shape}')
 
-            # if labels.size(1) > 1:
+            if labels.size(1) > 1:
+                 labels = labels.argmax(dim=1)
             #     labels = torch.argmax(labels, dim=1)
+            #print(f'preds shape: {preds.shape}')
+            #print(f'labels shape: {labels.shape}')
+
             acc_per_class = (preds == labels).float().mean() * 100
             # (acc1,) = accuracy(output, labels, topk=(1,))
             # top1.update(acc1[0], bsz)
             top1.update(acc_per_class, bsz)
 
             corrects = (preds == labels).long()
-            labels_max = torch.argmax(labels, dim=1)
-            print(f'labels_max shape: {labels_max.shape}, ids shape: {ids.shape}')
+            labels_max = labels #torch.argmax(labels, dim=1)
+            #print(f'labels_max shape: {labels_max.shape}, ids shape: {ids.shape}')
             #flattened_idx = torch.stack([labels_max, ids], dim=1)
             flattened_idx = torch.stack([labels_max.long(), ids.long()], dim=1)
             #print(flattened_idx.shape)
@@ -221,7 +229,7 @@ def main():
     start_time = time.time()
     opt = parse_option()
 
-    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}"
+    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-beta{opt.beta}-2alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}"
     opt.exp_name = exp_name
 
     output_dir = f"results/{exp_name}"
@@ -244,46 +252,61 @@ def main():
     ])
     print("Using dataset csv:", opt.csv_file)
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
-    dataset = MimicCXR(
-        csv_file=opt.csv_file, root=opt.root_dir, transform=transform, class_names=class_names, #target_attribute=opt.task,
+    # dataset = MimicCXR(
+    #     csv_file=opt.csv_file, root=opt.root_dir, transform=transform, class_names=class_names, #target_attribute=opt.task,
+    #     logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+    # )
+    train_dataset = MimicCXR(
+        csv_file=opt.csv_file.replace('.csv', '80.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+    )
+    val_dataset = MimicCXR(
+        csv_file=opt.csv_file.replace('.csv', '20.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
         logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
     )
 
-    num_samples = len(dataset)
-    indices = list(range(num_samples))
+    # num_samples = len(dataset)
+    # indices = list(range(num_samples))
     set_seed(opt.seed)
-    np.random.shuffle(indices)
+    # np.random.shuffle(indices)
 
     # Define the sizes for training, validation, and test sets
-    val_size = opt.val_split
-    test_size = opt.test_split
-    val_split = int(np.floor(val_size * num_samples))
-    test_split = int(np.floor(test_size * num_samples))
+    val_size = len(val_dataset)
+    train_size = len(train_dataset)
+    # val_size = opt.val_split
+    # test_size = opt.test_split
+    # val_split = int(np.floor(val_size * num_samples))
+    # test_split = int(np.floor(test_size * num_samples))
 
-    #train_indices = indices[val_split + test_split:]
-    train_indices = indices[val_split:]
-    val_indices = indices[:val_split]
-    test_indices = indices[val_split:val_split+test_split]
+    # #train_indices = indices[val_split + test_split:]
+    # train_indices = indices[val_split:]
+    # val_indices = indices[:val_split]
+    # test_indices = indices[val_split:val_split+test_split]
 
-    train_size = len(train_indices)
-    val_size = len(val_indices)
-    test_size = len(test_indices)
-    print("Dataset size:", num_samples, flush=True)
+    # train_size = len(train_indices)
+    # val_size = len(val_indices)
+    # test_size = len(test_indices)
+    # print("Dataset size:", num_samples, flush=True)
     print("Train size:", train_size, flush=True)
     print("Validation size:", val_size, flush=True)
-    print("Test size:", test_size, flush=True)
+    # print("Test size:", test_size, flush=True)
 
-    # Define samplers for obtaining batches from train, validation, and test sets
-    train_sampler = SubsetRandomSampler(train_indices)
-    val_sampler = SequentialSampler(val_indices)
-    test_sampler = SequentialSampler(test_indices)
+    # # Define samplers for obtaining batches from train, validation, and test sets
+    # train_sampler = SubsetRandomSampler(train_indices)
+    # val_sampler = SequentialSampler(val_indices)
+    # test_sampler = SequentialSampler(test_indices)
 
+    # # Create data loaders
+    # train_loader = DataLoader(dataset, batch_size=opt.bs, sampler=train_sampler, num_workers=2)
+    # val_loaders = {}
+    # val_loaders["valid"] = DataLoader(dataset, batch_size=opt.bs * 2, sampler=val_sampler)
+    # val_loaders["test"] = DataLoader(dataset, batch_size=opt.bs * 2, sampler=test_sampler)
+    
     # Create data loaders
-    train_loader = DataLoader(dataset, batch_size=opt.bs, sampler=train_sampler, num_workers=2)
+    train_loader = DataLoader(train_dataset, batch_size=opt.bs, num_workers=2, shuffle=True) #sampler=train_sampler, num_workers=2)
     val_loaders = {}
-    val_loaders["valid"] = DataLoader(dataset, batch_size=opt.bs * 2, sampler=val_sampler)
-    val_loaders["test"] = DataLoader(dataset, batch_size=opt.bs * 2, sampler=test_sampler)
-
+    val_loaders["valid"] = DataLoader(val_dataset, batch_size=opt.bs * 2, shuffle=False) #, sampler=val_sampler)
+    
     model, criterion, protected_net = set_model(opt, num_classes=len(class_names))
 
     decay_epochs = [opt.epochs // 3, opt.epochs * 2 // 3]
@@ -300,8 +323,10 @@ def main():
 
     (save_path / "checkpoints").mkdir(parents=True, exist_ok=True)
 
-    best_accs = {"valid": 0, "test": 0}
-    best_epochs = {"valid": 0, "test": 0}
+    # best_accs = {"valid": 0, "test": 0}
+    # best_epochs = {"valid": 0, "test": 0}
+    best_accs = {"valid": 0}
+    best_epochs = {"valid": 0}
     best_stats = {}
     if os.path.exists(save_path / "checkpoints" / f"last.pth"):
         print("Loading from savefile")
@@ -335,7 +360,7 @@ def main():
         )
 
         # scheduler.step()
-        
+
         stats = pretty_dict(epoch=epoch)
         for key, val_loader in val_loaders.items():
             val_loss, accs = validate(val_loader, model, criterion)
@@ -370,8 +395,8 @@ def main():
         scheduler.step(validation_loss)
         if validation_loss < best_val_loss:
             logging.info(f"Validation loss improved from {best_val_loss:.4f} to {validation_loss:.4f}. Saving model...")
-            best_val_loss = validation_loss  
-            patience_counter = 0     
+            best_val_loss = validation_loss
+            patience_counter = 0
             torch.save(model, save_path / 'checkpoints' / 'best_flac_model.pt')
         else:
             patience_counter += 1

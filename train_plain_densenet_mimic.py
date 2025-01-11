@@ -40,15 +40,15 @@ def clip_gradient(optimizer, grad_clip):
 
 def parse_option():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exp_name", type=str, default="brightness_bandsdense_plain")
+    parser.add_argument("--exp_name", type=str, default="densenet")
     parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--task", type=str, default="brightness_bands")
+    parser.add_argument("--task", type=str, default="plain")
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--seed", type=int, default=42)
 
     parser.add_argument("--bs", type=int, default=64, help="batch_size")
     parser.add_argument("--lr", type=float, default=0.5e-3)
-    parser.add_argument("--alpha", type=float, default=100)
+    parser.add_argument("--alpha", type=float, default=1000)
     parser.add_argument("--csv_file", type=str, default='data/half_meta_data_filtered.csv')
     parser.add_argument("--root_dir", type=str, default='/home/csi22304/physionet/physionet.org/files/mimic-cxr-jpg/2.0.0/')
     parser.add_argument("--grad_clip", type=float, default=0.5)
@@ -76,8 +76,8 @@ def set_model(opt, num_classes=2):
         for param in model.fc.parameters():
             param.requires_grad = True
     # criterion1 = nn.CrossEntropyLoss()
-    criterion1 = nn.BCELoss().cuda()
-    
+    #criterion1 = nn.BCELoss().cuda()
+    criterion1 = nn.BCEWithLogitsLoss().cuda()
     return model, criterion1
 
 
@@ -94,6 +94,7 @@ def train(train_loader, model, criterion, optimizer, opt):
             bsz = labels.shape[0]
             labels = labels.cuda()
             images = images.cuda()
+            #print("Image shape:", images.shape)
             logits, features = model(images)
 
             loss = criterion(logits, labels)
@@ -126,22 +127,26 @@ def validate(val_loader, model, criterion):
             loss = criterion(output, labels)
             total_val_loss += loss * bsz
             # preds = output.data.max(1, keepdim=True)[1].squeeze(1)
-            preds = (output > 0.5).long()
-
+            #preds = (output > 0.5).long()
+            preds = output.argmax(1)
 
             #print(f'Output shape: {output.shape}, Labels shape: {labels.shape}')
 
-            # if labels.size(1) > 1:
-            #     labels = torch.argmax(labels, dim=1)
+            if labels.size(1) > 1:
+                labels = torch.argmax(labels, dim=1)
             acc_per_class = (preds == labels).float().mean() * 100
             # (acc1,) = accuracy(output, labels, topk=(1,))
             # top1.update(acc1[0], bsz)
             top1.update(acc_per_class, bsz)
-
+            #if labels.dim() > 1:  # Check if labels are one-hot encoded
+            #    labels = labels.argmax(dim=1)
             corrects = (preds == labels).long()
-            labels_max = torch.argmax(labels, dim=1)
-
-            flattened_idx = torch.stack([labels_max, ids], dim=1)
+            #labels_max = torch.argmax(labels, dim=1)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            #labels_max = labels_max.to(device)
+            ids = ids.to(device)
+            per_sample_accuracy = corrects.view(bsz, -1).float().mean(dim=1).cpu()
+            #flattened_idx = torch.stack([labels_max, ids], dim=1)
             # vals = corrects.cpu().view(-1)
             # vals = corrects.view(bsz, -1).mean(dim=1)
 
@@ -153,12 +158,17 @@ def validate(val_loader, model, criterion):
             #print(f'corrects.view(bsz, -1).sum(dim=1) shape: {corrects.view(bsz, -1).sum(dim=1).shape}')
             #print(f'labels_max shape: {labels_max.shape}')
             # print(f'vals shape: {vals.shape}')
-            attrwise_acc_meter.add(corrects.view(bsz, -1).float().mean(dim=1).cpu(), flattened_idx.cpu())
+            #attrwise_acc_meter.add(corrects.view(bsz, -1).float().mean(dim=1).cpu(), labels_max.cpu())
+            #print(f'labels_max shape: {labels_max.shape}')
+            #print(f'ids shape: {ids.shape}')
+            #print(f'flattened_idx: {flattened_idx.shape}')
+            #attrwise_acc_meter.add(per_sample_accuracy, flattened_idx)
+            #attrwise_acc_meter.add(corrects.view(bsz, -1).float().mean(dim=1).cpu(), flattened_idx.cpu())
             # attrwise_acc_meter.add(
             #     corrects.cpu(), flattened_idx
             # )
 
-    return total_val_loss, top1.avg, attrwise_acc_meter.get_mean()
+    return total_val_loss, top1.avg #, attrwise_acc_meter.get_mean()
 
 def save_checkpoint(model, optimizer, lr_scheduler, best_accs, best_epochs, best_stats, path):
     torch.save({
@@ -183,8 +193,7 @@ def load_checkpoint(path, model, optimizer, lr_scheduler):
 def main():
     start_time = time.time()
     opt = parse_option()
-    opt.brightness_bands = True
-    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}"
+    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-2alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}"
     opt.exp_name = exp_name
 
     output_dir = f"results/{exp_name}"
@@ -207,6 +216,10 @@ def main():
     ])
     print("Using dataset csv:", opt.csv_file)
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
+    #val_dataset = MimicCXR(
+    #    csv_file=opt.csv_file.replace('.csv', '20.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
+    #    logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+    #)
     train_dataset = MimicCXR(
         csv_file=opt.csv_file.replace('.csv', '80.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
         logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
@@ -308,23 +321,24 @@ def main():
         
         stats = pretty_dict(epoch=epoch)
         for key, val_loader in val_loaders.items():
-            val_loss, accs, valid_attrwise_accs = validate(val_loader, model, criterion)
+            val_loss, accs = validate(val_loader, model, criterion)
+            #val_loss, accs, valid_attrwise_accs = validate(val_loader, model, criterion)
             if key == 'valid':
                 validation_loss = val_loss
             stats[f"{key}/acc"] = accs.item()
-            stats[f"{key}/acc_unbiased"] = torch.mean(valid_attrwise_accs).item() * 100
-            eye_tsr = torch.eye(4)[:,:2]
-            stats[f"{key}/acc_skew"] = (
-                valid_attrwise_accs[eye_tsr == 0.0].mean().item() * 100
-            )
-            stats[f"{key}/acc_align"] = (
-                valid_attrwise_accs[eye_tsr > 0.0].mean().item() * 100
-            )
+            #stats[f"{key}/acc_unbiased"] = torch.mean(valid_attrwise_accs).item() * 100
+            #eye_tsr = torch.eye(4)[:,:2]
+            #stats[f"{key}/acc_skew"] = (
+            #    valid_attrwise_accs[eye_tsr == 0.0].mean().item() * 100
+            #)
+            #stats[f"{key}/acc_align"] = (
+            #    valid_attrwise_accs[eye_tsr > 0.0].mean().item() * 100
+            #)
 
-        logging.info(f"[{epoch} / {opt.epochs}] Val_loss: {validation_loss} {valid_attrwise_accs} {stats}")
+        logging.info(f"[{epoch} / {opt.epochs}] Val_loss: {validation_loss} {stats}")
         for tag in val_loaders.keys():
-            if stats[f"{tag}/acc_unbiased"] > best_accs[tag]:
-                best_accs[tag] = stats[f"{tag}/acc_unbiased"]
+            if stats[f"{tag}/acc"] > best_accs[tag]:
+                best_accs[tag] = stats[f"{tag}/acc"]
                 best_epochs[tag] = epoch
                 best_stats[tag] = pretty_dict(
                     **{f"best_{tag}_{k}": v for k, v in stats.items()}

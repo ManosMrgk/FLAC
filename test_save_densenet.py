@@ -71,7 +71,7 @@ def test_model(model, test_dataloader, criterion, device):
                 output_probs = outputs.cpu().detach().numpy()
 
                 predicted_classes = (outputs > 0.5).long()
-                print(f"predicted_classes:{predicted_classes} labels:{labels}")
+                #print(f"predicted_classes:{predicted_classes} labels:{labels}")
                 # true_classes = np.argmax(labels.cpu().detach().numpy(), axis=1)
                 corrects = (predicted_classes == labels).float().mean() * 100
                 top1.update(corrects, labels.size(0))
@@ -102,7 +102,7 @@ def test_model(model, test_dataloader, criterion, device):
     for col in result_df.columns:
         result_df[col] = result_df[col].apply(lambda x: x.item() if isinstance(x, torch.Tensor) else x)
     # Save to CSV
-    result_df.to_csv('results20_densenet_logo_plain.csv', index=False)
+    result_df.to_csv('results14_flacdensenet_salt_and_pepper_plain.csv', index=False)
     test_loss = test_running_loss / len(test_dataloader.dataset)
     test_accuracy = test_correct_predictions / test_total_predictions
     return test_loss, test_accuracy
@@ -113,7 +113,7 @@ def test(test_dataloader, criterion, model, device):
 
 
 def main():
-    model_path = 'results/flac-mimic_cxr_logo-logodense-lr0.001-alpha100-bs64-seed42/checkpoints/last_flac_model.pt'
+    model_path = 'results/flac-mimic_cxr_salt_and_pepper-flacdensenet-lr0.0005-beta1-2alpha1-bs64-seed42/checkpoints/last_flac_model.pt'
     #config['model_path'] = 'models/cxr_resnet50_model.pt'
     start_time = time.time()
     print("Initialize the dataset", flush=True)
@@ -128,7 +128,7 @@ def main():
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
     dataset = MimicCXR(
         csv_file=csv_file, root='/home/csi22304/physionet/physionet.org/files/mimic-cxr-jpg/2.0.0/', transform=transform, class_names=class_names, testing=True,
-        logo=False, gaussian_noise=False, salt_and_pepper=False,noise_intensity=35
+        logo=False, gaussian_noise=False, salt_and_pepper=False, brightness_bands=False, noise_intensity=35
     )
     random_state=42
     num_samples = len(dataset)
@@ -143,7 +143,7 @@ def main():
     test_split = int(np.floor(test_size * num_samples))
 
     test_indices = indices[val_split:val_split+test_split]
-
+    test_indices = indices[:]
     test_size = len(test_indices)
 
     print("Test size:", test_size)
@@ -161,7 +161,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    criterion = nn.BCELoss().cuda()
+    criterion = nn.BCEWithLogitsLoss().cuda()
     print("Testing the model on the test set", flush=True)
     test(test_dataloader, criterion, model, device)
 

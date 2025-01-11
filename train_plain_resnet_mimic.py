@@ -184,7 +184,7 @@ def load_checkpoint(path, model, optimizer, lr_scheduler):
 def main():
     start_time = time.time()
     opt = parse_option()
-    opt.brightness_bands = True
+    #opt.brightness_bands = True
     exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}"
     opt.exp_name = exp_name
 
