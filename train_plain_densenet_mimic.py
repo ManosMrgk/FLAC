@@ -59,6 +59,8 @@ def parse_option():
     parser.add_argument("--salt_and_pepper", default=False, action="store_true")
     parser.add_argument("--brightness_bands", default=False, action="store_true")
     parser.add_argument("--noise_intensity", type=int, default=35)
+    parser.add_argument("--criterion", type=str, default='BCE')
+
     opt = parser.parse_args()
     os.environ["CUDA_VISIBLE_DEVICES"] = str(opt.gpu)
 
@@ -75,9 +77,12 @@ def set_model(opt, num_classes=2):
             param.requires_grad = False
         for param in model.fc.parameters():
             param.requires_grad = True
-    # criterion1 = nn.CrossEntropyLoss()
+    if opt.criterion == 'CE':
+        criterion1 = nn.CrossEntropyLoss().cuda()
+    elif opt.criterion == 'BCE':
+        criterion1 = nn.BCEWithLogitsLoss().cuda() # For multilabel
     #criterion1 = nn.BCELoss().cuda()
-    criterion1 = nn.BCEWithLogitsLoss().cuda()
+    #criterion1 = nn.BCEWithLogitsLoss().cuda()
     return model, criterion1
 
 
@@ -112,7 +117,7 @@ def train(train_loader, model, criterion, optimizer, opt):
     return avg_loss.avg
 
 
-def validate(val_loader, model, criterion):
+def validate(opt, val_loader, model, criterion):
     model.eval()
 
     top1 = AverageMeter()
@@ -128,8 +133,11 @@ def validate(val_loader, model, criterion):
             total_val_loss += loss * bsz
             # preds = output.data.max(1, keepdim=True)[1].squeeze(1)
             #preds = (output > 0.5).long()
-            preds = output.argmax(1)
-
+            if opt.criterion == 'CE':
+                preds = output.argmax(1)
+            elif opt.criterion == 'BCE':    
+                preds = (output > 0.5).long()
+            #preds = (torch.sigmoid(output) > 0.5).long().argmax(dim=1) # for CELoss with order hierarchy of predicted classes
             #print(f'Output shape: {output.shape}, Labels shape: {labels.shape}')
 
             if labels.size(1) > 1:
@@ -193,7 +201,11 @@ def load_checkpoint(path, model, optimizer, lr_scheduler):
 def main():
     start_time = time.time()
     opt = parse_option()
-    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-2alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}"
+    criterion_values = ['CE', 'BCE']
+    if opt.criterion not in criterion_values:
+        raise AttributeError("Not valid criterion value selected: " + opt.criterion)
+
+    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-2599alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}-criterion{opt.criterion}"
     opt.exp_name = exp_name
 
     output_dir = f"results/{exp_name}"
@@ -321,7 +333,7 @@ def main():
         
         stats = pretty_dict(epoch=epoch)
         for key, val_loader in val_loaders.items():
-            val_loss, accs = validate(val_loader, model, criterion)
+            val_loss, accs = validate(opt, val_loader, model, criterion)
             #val_loss, accs, valid_attrwise_accs = validate(val_loader, model, criterion)
             if key == 'valid':
                 validation_loss = val_loss
