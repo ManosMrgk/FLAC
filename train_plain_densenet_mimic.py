@@ -135,25 +135,27 @@ def validate(opt, val_loader, model, criterion):
             #preds = (output > 0.5).long()
             if opt.criterion == 'CE':
                 preds = output.argmax(1)
+                if labels.size(1) > 1:
+                    labels = torch.argmax(labels, dim=1)
             elif opt.criterion == 'BCE':    
                 preds = (output > 0.5).long()
             #preds = (torch.sigmoid(output) > 0.5).long().argmax(dim=1) # for CELoss with order hierarchy of predicted classes
             #print(f'Output shape: {output.shape}, Labels shape: {labels.shape}')
 
-            if labels.size(1) > 1:
-                labels = torch.argmax(labels, dim=1)
+            #if labels.size(1) > 1:
+            #    labels = torch.argmax(labels, dim=1)
             acc_per_class = (preds == labels).float().mean() * 100
             # (acc1,) = accuracy(output, labels, topk=(1,))
             # top1.update(acc1[0], bsz)
             top1.update(acc_per_class, bsz)
             #if labels.dim() > 1:  # Check if labels are one-hot encoded
             #    labels = labels.argmax(dim=1)
-            corrects = (preds == labels).long()
+            #corrects = (preds == labels).long()
             #labels_max = torch.argmax(labels, dim=1)
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             #labels_max = labels_max.to(device)
-            ids = ids.to(device)
-            per_sample_accuracy = corrects.view(bsz, -1).float().mean(dim=1).cpu()
+            #ids = ids.to(device)
+            #per_sample_accuracy = corrects.view(bsz, -1).float().mean(dim=1).cpu()
             #flattened_idx = torch.stack([labels_max, ids], dim=1)
             # vals = corrects.cpu().view(-1)
             # vals = corrects.view(bsz, -1).mean(dim=1)
@@ -384,4 +386,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

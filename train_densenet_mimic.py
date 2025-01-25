@@ -128,6 +128,10 @@ def train(train_loader, model, criterion, optimizer, protected_net, opt):
             # print(f'pr_feat shape: {pr_feat.shape}')
             # print(f'features shape: {features.shape}')
             # print(f'labels shape: {labels.shape}')
+            #if opt.criterion == 'CE':
+            #   loss_mi_div = opt.alpha * (flac_loss(pr_feat, features, labels_max))
+            #elif opt.criterion == 'BCE':
+            #   loss_mi_div = opt.alpha * (flac_loss_multilabel(pr_feat, features, labels))
             loss_mi_div = opt.alpha * (flac_loss(pr_feat, features, labels_max))
             loss_cl = opt.beta * criterion(logits, labels)
             loss = loss_cl + loss_mi_div
@@ -167,14 +171,16 @@ def validate(opt, val_loader, model, criterion):
             # preds = output.data.max(1, keepdim=True)[1].squeeze(1)
             if opt.criterion == 'CE':
                 preds = output.argmax(1)
+                if labels.size(1) > 1:
+                    labels = labels.argmax(dim=1)
             elif opt.criterion == 'BCE':    
                 preds = (output > 0.5).long()
             #preds = torch.softmax(output, dim=1).argmax(dim=1)
             #preds = (torch.sigmoid(output) > 0.5).long().argmax(dim=1) # for CELoss with order hierarchy of predicted classes
             #print(f'Output shape: {output.shape}, Labels shape: {labels.shape}')
 
-            if labels.size(1) > 1:
-                 labels = labels.argmax(dim=1)
+            #if labels.size(1) > 1:
+            #     labels = labels.argmax(dim=1)
             #     labels = torch.argmax(labels, dim=1)
             #print(f'preds shape: {preds.shape}')
             #print(f'labels shape: {labels.shape}')
