@@ -230,7 +230,7 @@ class MimicCXR:
         selected_indices = self.data_frame.sample(n=num_images_with_mark, replace=False).index
         self.data_frame.loc[selected_indices, 'mark'] = 1
 
-    def mark_selected_images(self, selected_class='Pleural Effusion', ratio=0.9):
+    def mark_selected_images(self, selected_class='Pleural Effusion', ratio=0.99):
         if not (0 <= ratio <= 1):
             raise ValueError("Ratio must be between 0 and 1.")
         # adding a new column to self.data_frame that indicates if the logo or noise will be added or not with 1 and 0 based on the ratio specified

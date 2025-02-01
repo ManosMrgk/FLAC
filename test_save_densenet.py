@@ -102,7 +102,7 @@ def test_model(model, test_dataloader, criterion, device):
     for col in result_df.columns:
         result_df[col] = result_df[col].apply(lambda x: x.item() if isinstance(x, torch.Tensor) else x)
     # Save to CSV
-    result_df.to_csv('results14_flacdensenet_salt_and_pepper_plain.csv', index=False)
+    result_df.to_csv('results15_densenet_brightness_bands_plain99MULTIFLACNoClipb10000.csv', index=False)
     test_loss = test_running_loss / len(test_dataloader.dataset)
     test_accuracy = test_correct_predictions / test_total_predictions
     return test_loss, test_accuracy
@@ -113,7 +113,7 @@ def test(test_dataloader, criterion, model, device):
 
 
 def main():
-    model_path = 'results/flac-mimic_cxr_salt_and_pepper-flacdensenet-lr0.0005-beta1-2alpha1-bs64-seed42/checkpoints/last_flac_model.pt'
+    model_path = 'results/flac-mimic_cxr_brightness_bands-flacdensenet-lr0.0005-beta10000-3599alpha1-bs64-seed42-criterionBCEnoclip/checkpoints/last_flac_model.pt'
     #config['model_path'] = 'models/cxr_resnet50_model.pt'
     start_time = time.time()
     print("Initialize the dataset", flush=True)

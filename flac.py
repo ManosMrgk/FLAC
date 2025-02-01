@@ -61,3 +61,64 @@ def flac_loss(protected_attr_features, features, labels, d=1):
     )
 
     return torch.mean(loss)
+
+def flac_loss_multilabel(protected_attr_features, features, labels, d=1, similarity_threshold=0.5):
+    """
+    Compute the FLAC loss adapted for multilabel classification.
+    
+    Args:
+        protected_attr_features (torch.Tensor): Features related to protected attributes (e.g., race, gender).
+        features (torch.Tensor): Main feature set.
+        labels (torch.Tensor): Binary matrix of multilabels (shape: [n_samples, n_classes]).
+        d (int, optional): Parameter controlling the kernel's decay. Default is 1.
+        similarity_threshold (float, optional): Threshold for label similarity (default is 0.5).
+        
+    Returns:
+        torch.Tensor: The computed loss.
+    """
+    # Protected attribute features kernel
+    protected_d = pairwise_distances(protected_attr_features)
+    protected_s = 1.0 / (1 + protected_d**d)
+    
+    # Target features kernel
+    features_d = pairwise_distances(features)
+    features_s = 1.0 / (1 + features_d**d)
+    
+    # Calculate label similarity using Jaccard index
+    #intersection = (labels[:, None, :] & labels[None, :, :]).sum(dim=2).float()
+    intersection = ((labels > 0.5).bool()[:, None, :] & (labels > 0.5).bool()[None, :, :]).sum(dim=2).float()
+    labels_bool = (labels > 0.5).bool()  # Thresholding for float labels
+
+    # Compute union using boolean labels
+    union = (labels_bool[:, None, :] | labels_bool[None, :, :]).sum(dim=2).float()
+    #union = (labels[:, None, :] | labels[None, :, :]).sum(dim=2).float()
+    label_similarity = intersection / (union + 1e-7)
+    
+    # Create the mask for multilabel case
+    same_label_mask = label_similarity >= similarity_threshold
+    different_label_mask = label_similarity < similarity_threshold
+    th = (torch.max(protected_s) + torch.min(protected_s)) / 2
+    mask = (same_label_mask & (protected_s < th)) | (different_label_mask & (protected_s > th))
+    mask = mask.to(labels.device)
+    
+    # If mask is empty, return zero
+    if torch.sum(mask) == 0:
+        return torch.tensor(0.0, device=labels.device)
+    
+    # Convert similarity to distance
+    protected_s = 1 - protected_s
+    
+    # Convert to probabilities
+    protected_s = protected_s / (
+        torch.sum(protected_s * mask.float(), dim=1, keepdim=True) + 1e-7
+    )
+    features_s = features_s / (
+        torch.sum(features_s * mask.float(), dim=1, keepdim=True) + 1e-7
+    )
+    
+    # Jeffrey's divergence
+    loss = (protected_s[mask] - features_s[mask]) * (
+        torch.log(protected_s[mask] + 1e-7) - torch.log(features_s[mask] + 1e-7)
+    )
+    
+    return torch.mean(loss)

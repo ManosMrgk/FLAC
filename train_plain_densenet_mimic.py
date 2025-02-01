@@ -68,7 +68,7 @@ def parse_option():
 
 
 def set_model(opt, num_classes=2):
-    model = DenseNet121(num_classes=num_classes).cuda()
+    model = DenseNet121(num_classes=num_classes, pretrained=True).cuda()
     print(model)
     if True:
         for param in model.parameters():
@@ -386,3 +386,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

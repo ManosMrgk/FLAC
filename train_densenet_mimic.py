@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch import nn
 from tqdm import tqdm
-from flac import flac_loss
+from flac import flac_loss, flac_loss_multilabel
 from datasets.mimic_cxr_jpg import MimicCXR, get_utk_face
 from models.densenet import DenseNet121
 from models.resnet import ResNet50, ResNet18
@@ -48,11 +48,11 @@ def parse_option():
 
     parser.add_argument("--bs", type=int, default=64, help="batch_size")
     parser.add_argument("--lr", type=float, default=0.5e-3)
-    parser.add_argument("--beta", type=float, default=1)
+    parser.add_argument("--beta", type=float, default=10000)
     parser.add_argument("--alpha", type=float, default=1)
     parser.add_argument("--csv_file", type=str, default='data/half_meta_data_filtered.csv')
     parser.add_argument("--root_dir", type=str, default='/home/csi22304/physionet/physionet.org/files/mimic-cxr-jpg/2.0.0/')
-    parser.add_argument("--grad_clip", type=float, default=0.5)
+    parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--val_split", type=float, default=0.2)
     parser.add_argument("--test_split", type=float, default=0.2)
     parser.add_argument("--logo", default=False, action="store_true")
@@ -68,7 +68,7 @@ def parse_option():
 
 
 def set_model(opt, num_classes=2):
-    model = DenseNet121(num_classes=num_classes).cuda()
+    model = DenseNet121(num_classes=num_classes, pretrained=True).cuda()
     print(model)
     if False:
         for param in model.parameters():
@@ -128,11 +128,11 @@ def train(train_loader, model, criterion, optimizer, protected_net, opt):
             # print(f'pr_feat shape: {pr_feat.shape}')
             # print(f'features shape: {features.shape}')
             # print(f'labels shape: {labels.shape}')
-            #if opt.criterion == 'CE':
-            #   loss_mi_div = opt.alpha * (flac_loss(pr_feat, features, labels_max))
-            #elif opt.criterion == 'BCE':
-            #   loss_mi_div = opt.alpha * (flac_loss_multilabel(pr_feat, features, labels))
-            loss_mi_div = opt.alpha * (flac_loss(pr_feat, features, labels_max))
+            if opt.criterion == 'CE':
+               loss_mi_div = opt.alpha * (flac_loss(pr_feat, features, labels_max))
+            elif opt.criterion == 'BCE':
+               loss_mi_div = opt.alpha * (flac_loss_multilabel(pr_feat, features, labels))
+            #loss_mi_div = opt.alpha * (flac_loss(pr_feat, features, labels_max))
             loss_cl = opt.beta * criterion(logits, labels)
             loss = loss_cl + loss_mi_div
 
@@ -194,7 +194,7 @@ def validate(opt, val_loader, model, criterion):
             labels_max = labels #torch.argmax(labels, dim=1)
             #print(f'labels_max shape: {labels_max.shape}, ids shape: {ids.shape}')
             #flattened_idx = torch.stack([labels_max, ids], dim=1)
-            flattened_idx = torch.stack([labels_max.long(), ids.long()], dim=1)
+            #flattened_idx = torch.stack([labels_max.long(), ids.long()], dim=1)
             #print(flattened_idx.shape)
             #print(flattened_idx)
             #flattened_idx = torch.stack([labels_max, biases], dim=1)
@@ -244,7 +244,7 @@ def main():
     if opt.criterion not in criterion_values:
         raise AttributeError("Not valid criterion value selected: " + opt.criterion)
 
-    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-beta{opt.beta}-2599alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}-criterion{opt.criterion}"
+    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-beta{opt.beta}-3599alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}-criterion{opt.criterion}noclip"
     opt.exp_name = exp_name
 
     output_dir = f"results/{exp_name}"
@@ -430,3 +430,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
