@@ -1,3 +1,4 @@
+from scipy.special import expit  # or torch.sigmoid if you're using PyTorch
 import pandas as pd
 import os
 import re
@@ -21,9 +22,11 @@ def calculate_auc_scores(df, classes):
     auc_scores = {}
     for cls in classes:
         actual = df[cls]
+        # predicted = expit(df[f'{cls}_hat'])
         predicted = df[f'{cls}_hat']
         auc = roc_auc_score(actual, predicted)
         auc_scores[cls] = auc
+    print(auc_scores)
     return auc_scores
 
 def save_auc_bar_plot(auc_scores, output_file):
@@ -60,10 +63,13 @@ def process_file(file_path, exp_type, noise_type):
     
     y_pred_raw = df[[col for col in df.columns if '_hat' in col]]
     y_pred_raw.columns = [col.replace('_hat', '') for col in y_pred_raw.columns]
-    y_pred = y_pred_raw.idxmax(axis=1)
+    y_pred_probs = expit(y_pred_raw)
+    y_pred = (y_pred_probs >= 0.5).astype(int) 
+    # y_pred = y_pred_raw.idxmax(axis=1)
     
     # Calculate the F1 score for the entire file
-    f1 = f1_score(y_true, y_pred, average='weighted', zero_division=1)  # Macro average F1 score
+    # f1 = f1_score(y_true, y_pred, average='weighted', zero_division=1)  # Macro average F1 score
+    f1 = f1_score(df[classes], y_pred, average='weighted', zero_division=1)  # Macro average F1 score
 
     y_true_onehot = pd.get_dummies(y_true, columns=classes)
     # auc_score = roc_auc_score(y_true_onehot, y_pred_raw, average='weighted', multi_class='ovr')
@@ -91,12 +97,13 @@ def process_file(file_path, exp_type, noise_type):
 def load_and_process_data(folder_path, experiments):
     summary_data = []
     auc_scores_map = dict()
+    print("files:\n", os.listdir(folder_path))
     for file_name in os.listdir(folder_path):
         if file_name.endswith(".csv"):
             file_path = os.path.join(folder_path, file_name)
             exp_type_part = file_name.split("_")[1]
             exp_type = 'flac' if 'flac' in exp_type_part else 'plain'
-            first_part = "results14_" + exp_type_part + "_"
+            first_part = "results15_" + exp_type_part + "_"
             second_part = file_name.replace(first_part, "")
             noise_type = 'plain'
             if "_plain" in second_part:
@@ -107,7 +114,8 @@ def load_and_process_data(folder_path, experiments):
             else:
                 auc_scores_map[exp_type+"_"+noise_type] = auc_scores
             summary_data.append(summary)
-    print(auc_scores_map)
+    print('auc_scores_map', auc_scores_map)
+    print('f1_data', summary_data)
     return pd.DataFrame(summary_data), auc_scores_map
 
 def plot_f1_scores(df):
@@ -146,7 +154,7 @@ def plot_f1_scores(df):
     bar_plot.set_xticklabels(df['alpha_beta'].cat.categories, rotation=45, ha="right")
 
     plt.title("F1 Scores Comparison by Noise Type - Test set without noise")
-    plt.xlabel("Alpha-Beta Pair")
+    plt.xlabel("Noise Type")
     plt.ylabel("F1 Score")
 
     for p in bar_plot.patches:
@@ -188,12 +196,14 @@ def create_auc_table(doc_data, output_filename):
     header_cells[3].text = "Lung Opacity"
     header_cells[4].text = "Atelectasis"
 
-    noise_types = ["brightness_bands", "gaussian_noise", "logo", "salt_and_pepper", "plain"]
+    noise_types = ["brightness_bands", "gaussian_noise", "logo", "salt_and_pepper", "sinusoidal_bands", "gaussian_smoothing", "plain"]
     run_types = ["flac", "densenet"]
     for noise in noise_types:
         if noise == 'plain':
             method = "Without FLAC"
-            scores = doc_data["densenet_plain"]
+            scores = doc_data.get("densenet_plain", None)
+            if scores == None:
+                continue
             row_cells = table.add_row().cells
             row_cells[0].text = method
             row_cells[1].text = f"{scores['No Finding']:.3f}"
@@ -202,7 +212,9 @@ def create_auc_table(doc_data, output_filename):
             row_cells[4].text = f"{scores['Atelectasis']:.3f}"
             continue
         for run in run_types:
-            scores = doc_data[run+"_"+noise]
+            scores = doc_data.get(run+"_"+noise, None)
+            if scores == None:
+                continue
             row_cells = table.add_row().cells
             row_cells[0].text = run.title()+" - "+noise.title()
             row_cells[1].text = f"{scores['No Finding']:.3f}"
@@ -222,9 +234,9 @@ def create_auc_table(doc_data, output_filename):
     return output_filename
 
 if __name__ == "__main__":
-    folder_path = "FLAC14/"
+    folder_path = "FLAC15/"
     
-    data, auc_scores_map = load_and_process_data(folder_path, experiments=["brightness_bands", "gaussian_noise", "logo", "salt_and_pepper"])
+    data, auc_scores_map = load_and_process_data(folder_path, experiments=["brightness_bands", "gaussian_noise", "logo", "salt_and_pepper", "sinusoidal_bands", "gaussian_smoothing"])
     output_path = "auc_scores_for_all_noise_types_plain.docx"
     create_auc_table(auc_scores_map, output_path)
 

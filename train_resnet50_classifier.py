@@ -328,9 +328,17 @@ def main():
         protected_attr_model = "./bias_capturing_classifiers/bcc_logo.pth"
     elif opt.task == "brightness_bands":
         protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands.pth"
+    elif opt.task == "sinusoidal_bands":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_sinusoidal_bands.pth"
+    elif opt.task == "gaussian_smoothing":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_gaussian_smoothing.pth"
+    elif opt.task == "color_inversion":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_color_inversion.pth"
     else:
         protected_attr_model = f"./bias_capturing_classifiers/bcc_{opt.task}50.pth"
     torch.save(model, protected_attr_model)
 
 if __name__ == "__main__":
     main()
+
+

@@ -45,6 +45,9 @@ def parse_option():
     parser.add_argument("--gaussian_noise", default=False, action="store_true")
     parser.add_argument("--salt_and_pepper", default=False, action="store_true")
     parser.add_argument("--brightness_bands", default=False, action="store_true")
+    parser.add_argument("--sinusoidal_bands", default=False, action="store_true")
+    parser.add_argument("--gaussian_smoothing", default=False, action="store_true")
+    parser.add_argument("--color_inversion", default=False, action="store_true")
     parser.add_argument("--noise_intensity", type=int, default=35)
     opt = parser.parse_args()
     os.environ["CUDA_VISIBLE_DEVICES"] = str(opt.gpu)
@@ -73,7 +76,17 @@ def set_model(opt, num_classes=2):
     elif opt.task == "logo":
         protected_attr_model = "./bias_capturing_classifiers/bcc_logo18.pth"
     elif opt.task == "brightness_bands":
-        protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands18.pth"
+        protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands18xnorm.pth"
+    elif opt.task == "sinusoidal_bands":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_sinusoidal_bands18xnorm.pth"
+    elif opt.task == "gaussian_smoothing":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_gaussian_smoothing18xnorm.pth"
+    elif opt.task == "color_inversion":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_color_inversion18xnorm.pth"
+    elif opt.task == "salt_and_pepper":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_salt_and_pepper18.pth"
+    elif opt.task == "gaussian_noise":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_gaussian_noise18.pth"
     protected_net = torch.load(protected_attr_model)
     protected_net.cuda()
     return model, criterion1, protected_net
@@ -199,7 +212,7 @@ def main():
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
     dataset = MimicCXR(
         csv_file=opt.csv_file, root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=opt.task,
-        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     )
 
     num_samples = len(dataset)
@@ -341,4 +354,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 

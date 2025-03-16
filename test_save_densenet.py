@@ -102,7 +102,7 @@ def test_model(model, test_dataloader, criterion, device):
     for col in result_df.columns:
         result_df[col] = result_df[col].apply(lambda x: x.item() if isinstance(x, torch.Tensor) else x)
     # Save to CSV
-    result_df.to_csv('results15_densenet_brightness_bands_plain99MULTIFLACNoClipb10000.csv', index=False)
+    result_df.to_csv('results15_flacdensenet_color_inversion_plain99NoClipb10000xnorma1000.csv', index=False)
     test_loss = test_running_loss / len(test_dataloader.dataset)
     test_accuracy = test_correct_predictions / test_total_predictions
     return test_loss, test_accuracy
@@ -113,7 +113,7 @@ def test(test_dataloader, criterion, model, device):
 
 
 def main():
-    model_path = 'results/flac-mimic_cxr_brightness_bands-flacdensenet-lr0.0005-beta10000-3599alpha1-bs64-seed42-criterionBCEnoclip/checkpoints/last_flac_model.pt'
+    model_path = 'results/flac-mimic_cxr_color_inversion-flacdensenet-lr0.0005-beta1000-3599alpha1-bs64-seed42-criterionBCEnoclipxnorm/checkpoints/last_flac_model.pt'
     #config['model_path'] = 'models/cxr_resnet50_model.pt'
     start_time = time.time()
     print("Initialize the dataset", flush=True)
@@ -122,13 +122,15 @@ def main():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[-0.000774949905462563, 0.0012312569888308644, 0.004699075594544411],
+                             std=[0.02031971886754036, 0.020773280411958694, 0.020680958405137062]),
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     print("Using dataset csv:", csv_file)
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
     dataset = MimicCXR(
         csv_file=csv_file, root='/home/csi22304/physionet/physionet.org/files/mimic-cxr-jpg/2.0.0/', transform=transform, class_names=class_names, testing=True,
-        logo=False, gaussian_noise=False, salt_and_pepper=False, brightness_bands=False, noise_intensity=35
+        logo=False, gaussian_noise=False, salt_and_pepper=False, brightness_bands=False, sinusoidal_bands=False, gaussian_smoothing=False, color_inversion=False, noise_intensity=35
     )
     random_state=42
     num_samples = len(dataset)
@@ -167,3 +169,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

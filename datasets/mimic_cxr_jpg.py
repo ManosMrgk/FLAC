@@ -12,11 +12,11 @@ from datasets.utils import TwoCropTransform, get_confusion_matrix
 from torch.utils.data.sampler import WeightedRandomSampler
 from torchvision import transforms
 from PIL import Image
-
+import torch.nn.functional as F
 
 class MimicCXR:
     def __init__(
-        self, csv_file, root, transform, class_names=['Enlarged Cardiomediastinum', 'No Finding'], testing=False, target_attribute=None, chunk_size=15000, logo=False, gaussian_noise=False, salt_and_pepper=False, brightness_bands=False, noise_intensity=35, **kwargs
+        self, csv_file, root, transform, class_names=['Enlarged Cardiomediastinum', 'No Finding'], testing=False, target_attribute=None, chunk_size=15000, logo=False, gaussian_noise=False, salt_and_pepper=False, brightness_bands=False, sinusoidal_bands=False, gaussian_smoothing=False, color_inversion=False, noise_intensity=35, **kwargs
     ):
         self.root = Path(root)
         self.testing = testing
@@ -30,13 +30,14 @@ class MimicCXR:
 
         # Remove rows that have -1 as any of the values of the selected classes
         self.data_frame = self.data_frame[(self.data_frame[class_names] != -1).all(axis=1)]
-
+        self.data_frame = self.data_frame.reset_index(drop=True)
         # Marking 90% of Pleural Effusion images for adding logos or noise
-        if (logo or gaussian_noise or salt_and_pepper or brightness_bands):
-            print(f"Adding device bias: logo: {logo}, gaussian_noise: {gaussian_noise}, salt_and_pepper: {salt_and_pepper}, brightness_bands: {brightness_bands}")
-            self.mark_selected_images()
+        if (logo or gaussian_noise or salt_and_pepper or brightness_bands or sinusoidal_bands or gaussian_smoothing or color_inversion):
+            print(f"Adding device bias: logo: {logo}, gaussian_noise: {gaussian_noise}, salt_and_pepper: {salt_and_pepper}, brightness_bands: {brightness_bands}, sinusoidal_bands: {sinusoidal_bands}, gaussian_smoothing: {gaussian_smoothing}, color_inversion: {color_inversion}")
+            selected_class = 'Pleural Effusion'
+            self.mark_selected_images(selected_class, ratio=0.9)
 
-        if self.target_attribute in ['logo', 'gaussian_noise', 'salt_and_pepper', 'brightness_bands']:
+        if self.target_attribute in ['logo', 'gaussian_noise', 'salt_and_pepper', 'brightness_bands','sinusoidal_bands', 'gaussian_smoothing', 'color_inversion']:
             print(f"Adding target attribute '{self.target_attribute}' to half the images")
             self.mark_selected_images_device_bias()
             #print("Logo:", self.target_attribute == 'logo')
@@ -44,6 +45,9 @@ class MimicCXR:
             gaussian_noise = self.target_attribute == 'gaussian_noise'
             salt_and_pepper = self.target_attribute == 'salt_and_pepper'
             brightness_bands = self.target_attribute == 'brightness_bands'
+            sinusoidal_bands = self.target_attribute == 'sinusoidal_bands'
+            gaussian_smoothing = self.target_attribute == 'gaussian_smoothing'
+            color_inversion = self.target_attribute == 'color_inversion'
 
         # Get class indices after filtering
         self.class_indices = [self.data_frame.columns.get_loc(class_name) for class_name in class_names]
@@ -76,6 +80,7 @@ class MimicCXR:
             self.images = torch.utils.data.ConcatDataset(self.images)
             with open(labels_file, 'rb') as f:
                 self.data_frame = pickle.load(f)
+                self.data_frame = self.data_frame.reset_index(drop=True)
                 #self.data_frame.to_csv('output.csv', index=False) 
                 self.labels = self.data_frame[self.class_names].values.astype(np.float32)
             print(f"Loaded preprocessed data for {csv_file}", flush=True)
@@ -111,9 +116,16 @@ class MimicCXR:
                             image = self.add_salt_and_pepper_to_image(image, noise_intensity=noise_intensity/1000)
                         if brightness_bands:
                             image = self.add_horizontal_brightness_bands(image)
+                        if sinusoidal_bands:
+                            image = self.add_horizontal_sinusoidal_bands(image)
+                        if gaussian_smoothing:
+                            image = self.add_gaussian_smoothing(image)
+                        if color_inversion:
+                            image = self.add_color_inversion(image)
                         tensor_transform = transforms.ToTensor()
                         image = tensor_transform(image)
-                        norm_transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                        norm_transform = transforms.Normalize(mean=[-0.000774949905462563, 0.0012312569888308644, 0.004699075594544411], std=[0.02031971886754036, 0.020773280411958694, 0.020680958405137062])
+                        #norm_transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                         image = norm_transform(image)
                     elif self.transform:
                         image = self.transform(image)
@@ -139,6 +151,7 @@ class MimicCXR:
                 print(f"Saved remaining images incrementally in chunk number: {chunk_idx:04d}.")
             self.images = []
             with open(labels_file, 'wb') as f:
+                self.data_frame = self.data_frame.reset_index(drop=True)
                 pickle.dump(self.data_frame, f)
             del images_chunk
             torch.cuda.empty_cache()
@@ -223,23 +236,79 @@ class MimicCXR:
                 image_array[y_position:y_position + band_thickness, :, :] = (image_array[y_position:y_position + band_thickness, :, :] * high_intensity_factor).clip(0, 255)
 
         return Image.fromarray(image_array)
+    
+    def add_horizontal_sinusoidal_bands(self, image, num_bands=25, mean_band_thickness=25, flicker_frequency=0.5, flicker_amplitude=0.05):
+        image_array = np.array(image)
+        height, width, _ = image_array.shape
+
+        start_y = 0  # Starting at 0 (whole image)
+        end_y = height
+
+        # Apply sinusoidal brightness modulation across bands
+        for i, y_position in enumerate(np.linspace(start_y, end_y, num_bands)):
+            y_position = int(y_position)
+            band_thickness = max(10, int(np.random.normal(mean_band_thickness, mean_band_thickness * 0.2)))
+
+            if y_position + band_thickness > height:
+                band_thickness = height - y_position
+
+            # Create a smooth sinusoidal flicker across the band
+            flicker_intensity = np.sin(flicker_frequency * i + np.linspace(0, 2 * np.pi, band_thickness)) * flicker_amplitude + 1
+
+            # Apply smooth sinusoidal brightness modulation to the entire band
+            for j in range(band_thickness):
+                # Apply the flicker intensity to each row within the band
+                image_array[y_position + j, :, :] = (image_array[y_position + j, :, :] * flicker_intensity[j]).clip(0, 255)
+
+        return Image.fromarray(image_array)
+    
+    def add_gaussian_smoothing(self, image, kernel_size=3, sigma=0.8):
+        image_array = np.array(image, dtype=np.float32) / 255.0  # Normalize to [0, 1]
+        image_tensor = torch.tensor(image_array).permute(2, 0, 1).unsqueeze(0)  # Convert to (B, C, H, W)
+
+        # Create Gaussian kernel
+        kernel_size = max(3, kernel_size)  # Ensure kernel size is at least 3
+        x = torch.arange(kernel_size) - kernel_size // 2
+        gauss = torch.exp(-0.5 * (x**2) / sigma**2)
+        gauss /= gauss.sum()  # Normalize
+
+        kernel_2d = gauss[:, None] * gauss[None, :]  # Outer product to get 2D Gaussian kernel
+        kernel_2d = kernel_2d.expand(image_tensor.shape[1], 1, kernel_size, kernel_size)  # Shape: (C, 1, k, k)
+
+        # Apply Gaussian filter using F.conv2d
+        padding = kernel_size // 2
+        smoothed_image = F.conv2d(image_tensor, kernel_2d, padding=padding, groups=image_tensor.shape[1])
+
+        # Convert back to PIL image
+        smoothed_image = smoothed_image.squeeze(0).permute(1, 2, 0).numpy() * 255.0
+
+        return Image.fromarray(smoothed_image.clip(0, 255).astype(np.uint8))
+    
+    def add_color_inversion(self, image):
+        image_array = np.array(image, dtype=np.float32) / 255.0  # Normalize to [0, 1]
+        inverted_array = 255 - image_array
+        return Image.fromarray(inverted_array.astype(np.uint8))
 
     def mark_selected_images_device_bias(self, ratio=0.5):
         self.data_frame['mark'] = 0
         num_images_with_mark = int(ratio * len(self.data_frame))
-        selected_indices = self.data_frame.sample(n=num_images_with_mark, replace=False).index
+        selected_indices = np.random.choice(self.data_frame.index, size=num_images_with_mark, replace=False)
+        #selected_indices = self.data_frame.sample(n=num_images_with_mark, replace=False).index
         self.data_frame.loc[selected_indices, 'mark'] = 1
 
-    def mark_selected_images(self, selected_class='Pleural Effusion', ratio=0.99):
+    def mark_selected_images(self, selected_class='Pleural Effusion', ratio=0.9):
         if not (0 <= ratio <= 1):
             raise ValueError("Ratio must be between 0 and 1.")
         # adding a new column to self.data_frame that indicates if the logo or noise will be added or not with 1 and 0 based on the ratio specified
         self.data_frame['mark'] = 0
-        class_indices = self.data_frame.index[self.data_frame[selected_class] == 1].tolist()
-
-        class_mask = self.data_frame[selected_class] == 1
+        if selected_class is not None:
+            class_indices = self.data_frame.index[self.data_frame[selected_class] == 1].tolist()
+        else:
+            class_indices = self.data_frame.index.tolist()
+        # class_mask = self.data_frame[selected_class] == 1
         num_images_with_mark = int(ratio * len(class_indices))
-        selected_indices = class_indices[:num_images_with_mark]
+        selected_indices = np.random.choice(class_indices, size=num_images_with_mark, replace=False)
+        #selected_indices = class_indices[:num_images_with_mark]
         self.data_frame.loc[selected_indices, 'mark'] = 1
 
     def __getitem__(self, idx):
@@ -259,7 +328,7 @@ class MimicCXR:
                 age = self.data_frame.iloc[idx]['age']
                 age_label = 1 if age > 40 else 0
                 return image, torch.tensor(labels), torch.tensor(age_label), idx
-            elif self.target_attribute in ['logo', 'gaussian_noise', 'salt_and_pepper', 'brightness_bands']:
+            elif self.target_attribute in ['logo', 'gaussian_noise', 'salt_and_pepper', 'brightness_bands','sinusoidal_bands', 'gaussian_smoothing', 'color_inversion']:
                 mark = self.data_frame.iloc[idx]['mark']
                 return image, torch.tensor(labels), torch.tensor(mark), idx
 
@@ -376,4 +445,7 @@ def get_utk_face(
     )
 
     return dataloader
+
+
+
 

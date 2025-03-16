@@ -58,6 +58,9 @@ def parse_option():
     parser.add_argument("--gaussian_noise", default=False, action="store_true")
     parser.add_argument("--salt_and_pepper", default=False, action="store_true")
     parser.add_argument("--brightness_bands", default=False, action="store_true")
+    parser.add_argument("--sinusoidal_bands", default=False, action="store_true")
+    parser.add_argument("--gaussian_smoothing", default=False, action="store_true")
+    parser.add_argument("--color_inversion", default=False, action="store_true")
     parser.add_argument("--noise_intensity", type=int, default=35)
     opt = parser.parse_args()
     os.environ["CUDA_VISIBLE_DEVICES"] = str(opt.gpu)
@@ -210,11 +213,11 @@ def main():
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
     train_dataset = MimicCXR(
         csv_file=opt.csv_file.replace('.csv', '80.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
-        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     )
     val_dataset = MimicCXR(
         csv_file=opt.csv_file.replace('.csv', '20.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
-        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     )
 
 
@@ -359,4 +362,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 

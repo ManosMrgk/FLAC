@@ -58,6 +58,9 @@ def parse_option():
     parser.add_argument("--gaussian_noise", default=False, action="store_true")
     parser.add_argument("--salt_and_pepper", default=False, action="store_true")
     parser.add_argument("--brightness_bands", default=False, action="store_true")
+    parser.add_argument("--sinusoidal_bands", default=False, action="store_true")
+    parser.add_argument("--gaussian_smoothing", default=False, action="store_true")
+    parser.add_argument("--color_inversion", default=False, action="store_true")
     parser.add_argument("--noise_intensity", type=int, default=35)
     parser.add_argument("--criterion", type=str, default='BCE')
 
@@ -207,7 +210,7 @@ def main():
     if opt.criterion not in criterion_values:
         raise AttributeError("Not valid criterion value selected: " + opt.criterion)
 
-    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-2599alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}-criterion{opt.criterion}"
+    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-2599alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}-criterion{opt.criterion}xnorm"
     opt.exp_name = exp_name
 
     output_dir = f"results/{exp_name}"
@@ -226,21 +229,23 @@ def main():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[-0.000774949905462563, 0.0012312569888308644, 0.004699075594544411],
+                             std=[0.02031971886754036, 0.020773280411958694, 0.020680958405137062]),
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     print("Using dataset csv:", opt.csv_file)
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
     #val_dataset = MimicCXR(
     #    csv_file=opt.csv_file.replace('.csv', '20.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
-    #    logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+    #    logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     #)
     train_dataset = MimicCXR(
         csv_file=opt.csv_file.replace('.csv', '80.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
-        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     )
     val_dataset = MimicCXR(
         csv_file=opt.csv_file.replace('.csv', '20.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
-        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     )
 
 
@@ -386,5 +391,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 

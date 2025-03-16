@@ -49,7 +49,7 @@ def parse_option():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp_name", type=str, default="classifier18")
     parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--task", type=str, default="salt_and_pepper")
+    parser.add_argument("--task", type=str, default="brightness_bands")
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--seed", type=int, default=42)
 
@@ -182,7 +182,13 @@ def train_model(opt, model, save_path, train_loader, val_loader, criterion, opti
     elif opt.task == "logo":
         protected_attr_model = "./bias_capturing_classifiers/bcc_logo18.pth"
     elif opt.task == "brightness_bands":
-        protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands18.pth"
+        protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands18xnorm.pth"
+    elif opt.task == "sinusoidal_bands":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_sinusoidal_bands18xnorm.pth"
+    elif opt.task == "gaussian_smoothing":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_gaussian_smoothing18xnorm.pth"
+    elif opt.task == "color_inversion":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_color_inversion18xnorm.pth"
     else:
         protected_attr_model = f"./bias_capturing_classifiers/bcc_{opt.task}18.pth"
 
@@ -211,7 +217,7 @@ def main():
     start_time = time.time()
     opt = parse_option()
 
-    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}"
+    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}xnorm"
     opt.exp_name = exp_name
 
     output_dir = f"results/{exp_name}"
@@ -230,7 +236,9 @@ def main():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[-0.000774949905462563, 0.0012312569888308644, 0.004699075594544411],
+                             std=[0.02031971886754036, 0.020773280411958694, 0.020680958405137062]),
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     print("Using dataset csv:", opt.csv_file)
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
@@ -307,3 +315,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

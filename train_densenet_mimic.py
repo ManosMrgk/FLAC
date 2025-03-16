@@ -48,7 +48,7 @@ def parse_option():
 
     parser.add_argument("--bs", type=int, default=64, help="batch_size")
     parser.add_argument("--lr", type=float, default=0.5e-3)
-    parser.add_argument("--beta", type=float, default=10000)
+    parser.add_argument("--beta", type=float, default=1000)
     parser.add_argument("--alpha", type=float, default=1)
     parser.add_argument("--csv_file", type=str, default='data/half_meta_data_filtered.csv')
     parser.add_argument("--root_dir", type=str, default='/home/csi22304/physionet/physionet.org/files/mimic-cxr-jpg/2.0.0/')
@@ -59,6 +59,9 @@ def parse_option():
     parser.add_argument("--gaussian_noise", default=False, action="store_true")
     parser.add_argument("--salt_and_pepper", default=False, action="store_true")
     parser.add_argument("--brightness_bands", default=False, action="store_true")
+    parser.add_argument("--sinusoidal_bands", default=False, action="store_true")
+    parser.add_argument("--gaussian_smoothing", default=False, action="store_true")
+    parser.add_argument("--color_inversion", default=False, action="store_true")
     parser.add_argument("--noise_intensity", type=int, default=35)
     parser.add_argument("--criterion", type=str, default='BCE')
     opt = parser.parse_args()
@@ -92,7 +95,13 @@ def set_model(opt, num_classes=2):
     elif opt.task == "logo":
         protected_attr_model = "./bias_capturing_classifiers/bcc_logo18.pth"
     elif opt.task == "brightness_bands":
-        protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands18.pth"
+        protected_attr_model = "./bias_capturing_classifiers/bcc_brightness_bands18xnorm.pth"
+    elif opt.task == "sinusoidal_bands":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_sinusoidal_bands18xnorm.pth"
+    elif opt.task == "gaussian_smoothing":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_gaussian_smoothing18xnorm.pth"
+    elif opt.task == "color_inversion":
+        protected_attr_model = "./bias_capturing_classifiers/bcc_color_inversion18xnorm.pth"
     elif opt.task == "salt_and_pepper":
         protected_attr_model = "./bias_capturing_classifiers/bcc_salt_and_pepper18.pth"
     elif opt.task == "gaussian_noise":
@@ -244,7 +253,7 @@ def main():
     if opt.criterion not in criterion_values:
         raise AttributeError("Not valid criterion value selected: " + opt.criterion)
 
-    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-beta{opt.beta}-3599alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}-criterion{opt.criterion}noclip"
+    exp_name = f"flac-mimic_cxr_{opt.task}-{opt.exp_name}-lr{opt.lr}-beta{opt.beta}-3599alpha{opt.alpha}-bs{opt.bs}-seed{opt.seed}-criterion{opt.criterion}noclipxnorm"
     opt.exp_name = exp_name
 
     output_dir = f"results/{exp_name}"
@@ -263,21 +272,23 @@ def main():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[-0.000774949905462563, 0.0012312569888308644, 0.004699075594544411], 
+                             std=[0.02031971886754036, 0.020773280411958694, 0.020680958405137062]),
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     print("Using dataset csv:", opt.csv_file)
     class_names = ['No Finding', 'Pleural Effusion', 'Lung Opacity', 'Atelectasis']
     # dataset = MimicCXR(
     #     csv_file=opt.csv_file, root=opt.root_dir, transform=transform, class_names=class_names, #target_attribute=opt.task,
-    #     logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+    #     logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     # )
     train_dataset = MimicCXR(
         csv_file=opt.csv_file.replace('.csv', '80.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
-        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     )
     val_dataset = MimicCXR(
         csv_file=opt.csv_file.replace('.csv', '20.csv'), root=opt.root_dir, transform=transform, class_names=class_names, target_attribute=None,
-        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, noise_intensity=opt.noise_intensity
+        logo=opt.logo, gaussian_noise=opt.gaussian_noise, salt_and_pepper=opt.salt_and_pepper, brightness_bands=opt.brightness_bands, sinusoidal_bands=opt.sinusoidal_bands, gaussian_smoothing=opt.gaussian_smoothing, color_inversion=opt.color_inversion, noise_intensity=opt.noise_intensity
     )
 
     # num_samples = len(dataset)
@@ -430,4 +441,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
